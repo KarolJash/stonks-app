@@ -220,7 +220,7 @@ def train_xgboost(payload):
     pic_name = uuid.uuid4()
 
     plot_importance(best_model)
-    plt.savefig(f'storage/output_images/{pic_name}.png')
+    plt.savefig(f'/app/storage/output_images/{pic_name}.png')
 
     test_predictions(model=best_model, x_test=X_test, y_test=Y_test)
     print(eval_performance(best_model, X_test, Y_test, payload.severity))
