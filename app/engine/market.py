@@ -156,7 +156,7 @@ def market():
         sp['count'] += 1
 
     for index, ticker in enumerate(nasdaq_tickers):
-        if index % 10 == 0:
+        if index % 250 == 0:
             print(f"{index}/{len(nasdaq_tickers)}")
 
         data = yf.Ticker(ticker=ticker).history(period="12y", interval="1wk")
