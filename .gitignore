@@ -1,0 +1,25 @@
+# --- Python Specific ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# --- Data and Storage ---
+data/
+
+# --- IDE/Editor Specific ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# --- Docker ---
+# Usually keep Dockerfile and docker-compose.yml, 
+# but ignore local data volumes if they are created in the root.
+postgres_data/
+
+# --- OS Specific ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini

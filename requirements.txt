@@ -1,0 +1,17 @@
+pydantic
+sqlalchemy
+pandas
+yfinance
+fastapi
+python-dotenv
+curl_cffi
+numpy
+optuna
+matplotlib
+xgboost
+scikit-learn
+pyfiglet
+termcolor
+uvicorn
+psycopg2
+lxml

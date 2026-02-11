@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres_server
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${db}
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - 8080:80
+    depends_on:
+      - postgres
+  api:
+    build: . # Looks for the Dockerfile in the current directory
+    container_name: stock-prediction-api
+    ports:
+      - "8000:8000" # Maps localhost:8000 to container:8000
+    environment:
+      # This connects to the 'db' service defined below
+      # Format: postgresql://user:password@SERVICE_NAME:PORT/db_name
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      - postgres # Waits for the database to start before starting the API
+    volumes:
+      - ./app:/app/app # OPTIONAL: Hot-reloading (syncs code changes instantly)
+      - ./storage:/app/storage
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000 --reload
+networks: {}
