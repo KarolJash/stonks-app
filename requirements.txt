@@ -15,3 +15,4 @@ termcolor
 uvicorn
 psycopg2
 lxml
+requests
