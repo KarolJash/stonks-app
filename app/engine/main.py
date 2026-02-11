@@ -188,11 +188,11 @@ def train_xgboost(payload):
     sp_train = import_from_db("S&P 500", MarketData, payload.start_training, payload.end_training).set_index(['date']).drop('index', axis=1).add_prefix("sp_")
     sp_test = import_from_db("S&P 500", MarketData, payload.start_testing, payload.end_testing).set_index(['date']).drop('index', axis=1).add_prefix("sp_")
 
-    nyse_train = import_from_db("NYSE", MarketData, payload.start_training, payload.end_training).set_index(['date']).drop('index', axis=1).add_prefix("nyse_")
-    nyse_test = import_from_db("NYSE", MarketData, payload.start_testing, payload.end_testing).set_index(['date']).drop('index', axis=1).add_prefix("nyse_")
+    nasdaq_train = import_from_db("NASDAQ", MarketData, payload.start_training, payload.end_training).set_index(['date']).drop('index', axis=1).add_prefix("nasdaq_")
+    nasdaq_test = import_from_db("NASDAQ", MarketData, payload.start_testing, payload.end_testing).set_index(['date']).drop('index', axis=1).add_prefix("nasdaq_")
 
-    train = stock_train.merge(sp_train, on="date").merge(nyse_train, on="date")
-    test = stock_test.merge(sp_test, on="date").merge(nyse_test, on="date")
+    train = stock_train.merge(sp_train, on="date").merge(nasdaq_train, on="date")
+    test = stock_test.merge(sp_test, on="date").merge(nasdaq_test, on="date")
 
     X_train = train[payload.inputs]
     Y_train = train[payload.output]
