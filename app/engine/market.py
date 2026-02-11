@@ -7,6 +7,9 @@ import string
 import numpy as np
 from dotenv import load_dotenv
 from curl_cffi import requests
+from pytickersymbols import PyTickerSymbols
+from yahoo_fin import stock_info as si
+import time
 
 from app.engine.indicators.sma_indicators import sma_indicators
 from app.engine.indicators.banner import gen_banner
@@ -35,54 +38,15 @@ TNX
 DXY
 """
 
-def get_sp500_tickers():
-    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+def get_market_tickers():
+    # This initialization is local and doesn't hit the web for every call
+    stock_data = PyTickerSymbols()
     
-    # Spoof a real browser header to bypass the 403 error
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-    
-    # 1. Fetch the content with the header
-    response = requests.get(url, headers=headers)
-    
-    # 2. Pass the HTML text to pandas
-    # read_html returns a list of DataFrames; the S&P table is index 0
-    tables = pd.read_html(response.text)
-    df = tables[0]
-    
-    # 3. Clean tickers for Yahoo Finance (replace dots with hyphens)
-    tickers = df['Symbol'].str.replace('.', '-', regex=False).tolist()
-    
-    return tickers
-
-def get_nyse_tickers():
-    all_tickers = []
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-    
-    # Categories on Wikipedia: 0-9 and then A through Z
-    categories = ['0-9'] + list(string.ascii_uppercase)
-    
-    for char in categories:
-        url = f'https://en.wikipedia.org/wiki/Companies_listed_on_the_New_York_Stock_Exchange_({char})'
-        try:
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                # The ticker table is the first wikitable on these pages
-                tables = pd.read_html(response.text)
-                df = tables[0]
-                
-                # Column is usually named 'Symbol'
-                if 'Symbol' in df.columns:
-                    # Clean the tickers for Yahoo Finance format
-                    clean_tickers = df['Symbol'].str.replace('.', '-', regex=False).tolist()
-                    all_tickers.extend(clean_tickers)
-        except Exception as e:
-            pass
+    # Get S&P 500 Tickers
+    sp500_stocks = stock_data.get_stocks_by_index('S&P 500')
+    sp500_tickers = [s['symbol'].replace('.', '-') for s in sp500_stocks]
             
-    return sorted(list(set(all_tickers))) # Remove duplicates and sort
+    return sp500_tickers
 
 def calc_up_down(stock, df):
     if 'up' not in df.columns:
@@ -111,7 +75,6 @@ def clean_data(df, ticker):
     diff = df['new high'] - df['new low']
     roll_mean = diff.rolling(window=12, min_periods=1).mean()
     roll_std  = diff.rolling(window=12, min_periods=1).std()
-
     roll_std = roll_std.replace(0, 1e-9).fillna(1e-9)
 
     clean_df['nh_nl_z'] = (diff - roll_mean) / roll_std
@@ -133,7 +96,7 @@ def new_high(stock, df):
 
     high = stock['High'].rolling(window=52, min_periods=1).max()
 
-    df['new high'] = df['new high'].add(stock['High'] == high, fill_value=0)
+    df['new high'] = df['new high'].add((stock['High'] == high).astype(int), fill_value=0)
 
 def new_low(stock, df):
     if 'new low' not in df.columns:
@@ -141,22 +104,17 @@ def new_low(stock, df):
     
     low = stock['Low'].rolling(window=52, min_periods=1).min()
 
-    df['new low'] = df['new low'].add(stock['Low'] == low, fill_value=0)
+    df['new low'] = df['new low'].add((stock['Low'] == low).astype(int), fill_value=0)
 
 
 def market():
     load_dotenv()
     gen_banner()
 
-    [sl, t] = start_animation("Loading SP 500 ")
-    sp_tickers = get_sp500_tickers()
-    end_animation(sl, t)
-    
-    [sl, t] = start_animation("Loading NYSE ")
-    nyse_tickers = get_nyse_tickers()
+    [sl, t] = start_animation("Loading TICKERS ")
 
-    delete = np.load('storage/models/delisted.npy')
-    nyse_tickers = [x for x in nyse_tickers if x not in delete]
+    sp_tickers = get_market_tickers()
+    nasdaq_tickers = si.tickers_nasdaq()
 
     end_animation(sl, t)
 
@@ -167,36 +125,18 @@ def market():
     })
 
     sp = yf.download(tickers=["^GSPC"], period="12y", group_by="ticker", interval="1wk", session=session, threads=True)["^GSPC"]
-    nyse = yf.download(tickers=["^NYA"], period="12y", group_by="ticker", interval="1wk", session=session, threads=True)["^NYA"]
+    nasdaq = yf.download(tickers=["^IXIC"], period="12y", group_by="ticker", interval="1wk", session=session, threads=True)["^IXIC"]
     vix = yf.download(tickers=["^VIX"], period="12y", group_by="ticker", interval="1wk", session=session, threads=True)["^VIX"]
 
     sp.columns = sp.columns.str.lower()
-    nyse.columns = nyse.columns.str.lower()
+    nasdaq.columns = nasdaq.columns.str.lower()
     vix.columns = vix.columns.str.lower()
 
     vix['% Change'] = round((vix['close'] - vix['open']) / vix['open'] * 100, 2)
     sma_indicators(vix)
     sma_indicators(sp)
-    sma_indicators(nyse)
+    sma_indicators(nasdaq)
 
-    nyse_download = yf.download(tickers=nyse_tickers, period="12y", group_by="ticker", interval="1wk", session=session)
-    nyse_dic = {ticker: nyse_download.xs(ticker, axis=1, level=0) for ticker in nyse_tickers}
-
-    for ticker, data in nyse_dic.items():
-        if (data.empty):
-            print("🚩🚩🚩 " + ticker + " failed")
-            continue
-
-        calc_up_down(data, nyse)
-        stocks_above_40(data, nyse)
-        new_high(data, nyse)
-        new_low(data, nyse)
-
-        if 'count' not in nyse.columns:
-            nyse['count'] = 0
-
-        nyse['count'] += 1
-    
     sp_download = yf.download(tickers=sp_tickers, period="12y", group_by="ticker", interval="1wk", session=session, threads=True)
     sp_dic = {ticker: sp_download.xs(ticker, axis=1, level=0) for ticker in sp_tickers}
 
@@ -215,11 +155,35 @@ def market():
 
         sp['count'] += 1
 
+    for index, ticker in enumerate(nasdaq_tickers):
+        if index % 10 == 0:
+            print(f"{index}/{len(nasdaq_tickers)}")
+
+        data = yf.Ticker(ticker=ticker).history(period="12y", interval="1wk")
+
+        if (data.empty):
+            print("🚩🚩🚩 " + ticker + " failed")
+            continue
+
+        data.index = data.index.tz_localize(None)
+
+        calc_up_down(data, nasdaq)
+        stocks_above_40(data, nasdaq)
+        new_high(data, nasdaq)
+        new_low(data, nasdaq)
+
+        if 'count' not in nasdaq.columns:
+            nasdaq['count'] = 0
+
+        nasdaq['count'] += 1
+
+        time.sleep(0.1)
+
     sp_final = clean_data(sp, 'S&P 500')
     save_to_db(sp_final, MarketData.__tablename__)
 
-    nyse_final = clean_data(nyse, 'NYSE')
-    save_to_db(nyse_final, MarketData.__tablename__)
+    nasdaq_final = clean_data(nasdaq, 'NASDAQ')
+    save_to_db(nasdaq_final, MarketData.__tablename__)
 
     print("downloaded and completed successfully")
 

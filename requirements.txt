@@ -16,3 +16,8 @@ uvicorn
 psycopg2
 lxml
 requests
+yahoo_fin
+requests-html
+pytickersymbols
+requests_html
+yahoo_fin
