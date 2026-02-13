@@ -104,8 +104,10 @@ def define_model(trial, n_estimators, hyperparameter_space):
         # Choose suggestion type based on whether min/max are ints or floats
         if isinstance(space.min, int) and isinstance(space.max, int):
             params[name] = trial.suggest_int(name, space.min, space.max, log=space.log)
-        else:
+        elif isinstance(space.min, float) and isinstance(space.max, float):
             params[name] = trial.suggest_float(name, space.min, space.max, log=space.log)
+        else:
+            params[name] = trial.suggest_categorical(name, space.categorical)
 
     return XGBRegressor(
         # --- GPU Params ---
@@ -114,6 +116,7 @@ def define_model(trial, n_estimators, hyperparameter_space):
         objective='reg:squarederror',
         n_estimators=n_estimators,
         n_jobs=-1,
+        enable_categorical=True,
 
         **params
 

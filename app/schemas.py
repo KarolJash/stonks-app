@@ -13,8 +13,9 @@ class DelistAddRequest(BaseModel):
     ticker: str
 
 class HyperparameterRange(BaseModel):
-    min: Union[int, float]
-    max: Union[int, float]
+    min: int | float | None = None
+    max: int | float | None = None
+    categorical: List[str] | None = None
     log: bool = False
 
 class XgboostTrainingRequest(BaseModel):
