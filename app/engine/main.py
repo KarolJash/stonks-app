@@ -1,5 +1,6 @@
 import matplotlib
-matplotlib.use('Agg')
+
+matplotlib.use("Agg")
 
 import uuid
 import numpy as np
@@ -10,50 +11,95 @@ from xgboost import XGBRegressor, plot_importance, plot_tree, to_graphviz
 from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sqlalchemy import select
+import os
+from dotenv import load_dotenv
 
 from app.models import StockData, MarketData
 from app.db import SessionLocal
-from app.engine.data_manager import import_from_db, save_xgboost
+from app.engine.data_manager import import_from_db, save_xgboost, import_model
+from app.schemas import XgboostPredictionRequest
 
-def import_data(ticker):
-    session = SessionLocal()
-    stmt = select(StockData).where(StockData.ticker == ticker)
+load_dotenv()
 
-    result = session.query(StockData).filter_by(StockData.ticker == ticker).all()
-    
-    print(result)
+
+def import_data(ticker, start_training, end_training, start_testing, end_testing):
+    stock_train = (
+        import_from_db(ticker, StockData, start_training, end_training)
+        .set_index(["date"])
+        .drop("index", axis=1)
+    )
+    stock_test = (
+        import_from_db(ticker, StockData, start_testing, end_testing)
+        .set_index(["date"])
+        .drop("index", axis=1)
+    )
+
+    sp_train = (
+        import_from_db("S&P 500", MarketData, start_training, end_training)
+        .set_index(["date"])
+        .drop("index", axis=1)
+        .add_prefix("sp_")
+    )
+    sp_test = (
+        import_from_db("S&P 500", MarketData, start_testing, end_testing)
+        .set_index(["date"])
+        .drop("index", axis=1)
+        .add_prefix("sp_")
+    )
+
+    nasdaq_train = (
+        import_from_db("NASDAQ", MarketData, start_training, end_training)
+        .set_index(["date"])
+        .drop("index", axis=1)
+        .add_prefix("nasdaq_")
+    )
+    nasdaq_test = (
+        import_from_db("NASDAQ", MarketData, start_testing, end_testing)
+        .set_index(["date"])
+        .drop("index", axis=1)
+        .add_prefix("nasdaq_")
+    )
+
+    train = stock_train.merge(sp_train, on="date").merge(nasdaq_train, on="date")
+    test = stock_test.merge(sp_test, on="date").merge(nasdaq_test, on="date")
+
+    return [train, test]
+
 
 def split_data(csv):
     scaler = StandardScaler().set_output(transform="pandas")
     num = round(len(csv) * 0.8)
 
-    #X = csv[['Q1', 'Q2', 'Q3', 'Q4', 'SMA_4', 'SMA_10', 'SMA_40', 'per off high', 'per off low', 'per change rsi', 'current rsi', 'stock rsi', 'price slope', 'bandwidth', 'price range position', 'macd', 'macd slope', 'volume year over year']]
-    X = csv[[
-        'off high',
-        'off low',
-        'is_bullish',
-        'is_bearish',
-        'price_above',
-        'proximity_A',
-        'proximity_B',
-        'proximity_C',
-        'A/D',
-        'rs',
-        'rsi',
-        'weighted rsi',
-        'rsi momentum',
-        'Volume Expansion',
-        'Energy',
-        'volume perc change',
-        'macd',
-        'macd slope',
-        'bandwidth',
-        'price range position',
-        'normalized_slope',
-        'z_score']]
-    Y = csv[['Class performance']]
+    # X = csv[['Q1', 'Q2', 'Q3', 'Q4', 'SMA_4', 'SMA_10', 'SMA_40', 'per off high', 'per off low', 'per change rsi', 'current rsi', 'stock rsi', 'price slope', 'bandwidth', 'price range position', 'macd', 'macd slope', 'volume year over year']]
+    X = csv[
+        [
+            "off high",
+            "off low",
+            "is_bullish",
+            "is_bearish",
+            "price_above",
+            "proximity_A",
+            "proximity_B",
+            "proximity_C",
+            "A/D",
+            "rs",
+            "rsi",
+            "weighted rsi",
+            "rsi momentum",
+            "Volume Expansion",
+            "Energy",
+            "volume perc change",
+            "macd",
+            "macd slope",
+            "bandwidth",
+            "price range position",
+            "normalized_slope",
+            "z_score",
+        ]
+    ]
+    Y = csv[["Class performance"]]
 
-    if len(csv) > 52*5:
+    if len(csv) > 52 * 5:
         print("here")
         X_train = scaler.fit_transform(X.iloc[-169:-65])
         Y_train = Y.iloc[-169:-65]
@@ -69,35 +115,36 @@ def split_data(csv):
 
     return [X_train, Y_train, X_test, Y_test]
 
+
 def move_data(X_train, Y_train, X_test, Y_test):
-    #Take the imported CSV table and transfer over to GPU using DeviceQuantileDMatrix
+    # Take the imported CSV table and transfer over to GPU using DeviceQuantileDMatrix
     print("Moving data to GPU...")
     d_train = xgb.DMatrix(X_train, label=Y_train)
     d_test = xgb.DMatrix(X_test, label=Y_test)
 
     return [d_train, d_test]
 
+
 def define_params(trial):
     return {
         # --- GPU Params ---
-        'device':'cuda',
-        'tree_method':'hist',
-        'objective':'reg:squarederror',
-
+        "device": "cuda",
+        "tree_method": "hist",
+        "objective": "reg:squarederror",
         # --- Optuna Params ---
-        'learning_rate':trial.suggest_float('learning_rate', 0.001, 0.1, log=True),
-        'max_depth':trial.suggest_int('max_depth', 3, 12),
-        'subsample':trial.suggest_float('subsample', 0.5, 1.0),
-        'colsample_bytree':trial.suggest_float('colsample_bytree', 0.5, 1.0),
-        'gamma':trial.suggest_float('gamma', 1e-8, 1.0, log=True),
-        'reg_lambda':trial.suggest_float('reg_lambda', 1e-8, 1.0, log=True),
-        'reg_alpha':trial.suggest_float('reg_alpha', 1e-8, 1.0, log=True),
-        'min_child_weight': trial.suggest_float('min_child_weight', 1, 15)
+        "learning_rate": trial.suggest_float("learning_rate", 0.001, 0.1, log=True),
+        "max_depth": trial.suggest_int("max_depth", 3, 12),
+        "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+        "gamma": trial.suggest_float("gamma", 1e-8, 1.0, log=True),
+        "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 1.0, log=True),
+        "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 1.0, log=True),
+        "min_child_weight": trial.suggest_float("min_child_weight", 1, 15),
     }
 
 
 def define_model(trial, n_estimators, hyperparameter_space):
-    print('Creating new Model')
+    print("Creating new Model")
 
     params = {}
     for name, space in hyperparameter_space.items():
@@ -105,35 +152,43 @@ def define_model(trial, n_estimators, hyperparameter_space):
         if isinstance(space.min, int) and isinstance(space.max, int):
             params[name] = trial.suggest_int(name, space.min, space.max, log=space.log)
         elif isinstance(space.min, float) and isinstance(space.max, float):
-            params[name] = trial.suggest_float(name, space.min, space.max, log=space.log)
-        else:
+            params[name] = trial.suggest_float(
+                name, space.min, space.max, log=space.log
+            )
+        elif isinstance(space.categorical, str):
             params[name] = trial.suggest_categorical(name, space.categorical)
 
     return XGBRegressor(
         # --- GPU Params ---
-        device='cpu',
-        tree_method='hist',
-        objective='reg:squarederror',
+        device="cpu",
+        tree_method="hist",
+        objective="reg:squarederror",
         n_estimators=n_estimators,
         n_jobs=-1,
         enable_categorical=True,
-
-        **params
-
-        #quantile_alpha=[0.05, 0.5, 0.95],
-        #objective='reg:quantileerror',
-
+        **params,
+        # quantile_alpha=[0.05, 0.5, 0.95],
+        # objective='reg:quantileerror',
         # --- Optuna Params ---
-        #grow_policy=trial.suggest_categorical('grow_policy', ['depthwise', 'lossguide']),
+        # grow_policy=trial.suggest_categorical('grow_policy', ['depthwise', 'lossguide']),
     )
-    
+
 
 def train_model_cpu(model, X_train, Y_train):
     print("Training New model")
     model.fit(X_train, Y_train)
 
+
 def train_model_gpu(params, d_train, d_test, trial):
-    return xgb.train(params, d_train, num_boost_round=1000, evals=[(d_test, 'Test')], early_stopping_rounds=100, verbose_eval=False)
+    return xgb.train(
+        params,
+        d_train,
+        num_boost_round=1000,
+        evals=[(d_test, "Test")],
+        early_stopping_rounds=100,
+        verbose_eval=False,
+    )
+
 
 def eval_performance(model, d_test, y_test, severity):
     print("Evaluating Performance")
@@ -142,31 +197,42 @@ def eval_performance(model, d_test, y_test, severity):
     accuracy = accuracy_score(y_test, np.round(preds))
     rmse = mean_squared_error(y_test, preds)
 
-    print('Accuracy was: ' + str(round(accuracy* 100, 2)) + '%')
-    print('RMSE: ' + str(rmse))
+    print("Accuracy was: " + str(round(accuracy * 100, 2)) + "%")
+    print("RMSE: " + str(rmse))
 
     return accuracy - severity * rmse * rmse
 
+
 def test_predictions(model, x_test, y_test):
     preds = model.predict(x_test)
-    prediction_data = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0}
-    real_data = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0}
+    prediction_data = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0}
+    real_data = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0}
 
     for i in range(len(y_test)):
         prediction_data[str(round(preds[i]))] += 1
         real_data[str(round(y_test.iloc[i]))] += 1
-    
+
     print(f"Prediction by model: {prediction_data}")
     print(f"Actual stock performance: {real_data}")
 
 
-def main_cpu(trial, X_train, Y_train, X_test, Y_test, severity, n_estimators, hyperparameter_space):
+def main_cpu(
+    trial,
+    X_train,
+    Y_train,
+    X_test,
+    Y_test,
+    severity,
+    n_estimators,
+    hyperparameter_space,
+):
     model = define_model(trial, n_estimators, hyperparameter_space)
     train_model_cpu(model, X_train, Y_train)
 
     score = eval_performance(model, X_test, Y_test, severity)
 
     return score
+
 
 def main_gpu(trial, d_train, d_test, Y_test):
     params = define_params(trial)
@@ -176,6 +242,7 @@ def main_gpu(trial, d_train, d_test, Y_test):
 
     return score
 
+
 def get_all_scores(model, d_test, y_test, severity):
     preds = model.predict(d_test)
 
@@ -184,18 +251,15 @@ def get_all_scores(model, d_test, y_test, severity):
 
     return [rmse, round(accuracy * 100, 2), accuracy - severity * rmse * rmse]
 
+
 def train_xgboost(payload):
-    stock_train = import_from_db(payload.ticker, StockData, payload.start_training, payload.end_training).set_index(['date']).drop('index', axis=1)
-    stock_test = import_from_db(payload.ticker, StockData, payload.start_testing, payload.end_testing).set_index(['date']).drop('index', axis=1)
-
-    sp_train = import_from_db("S&P 500", MarketData, payload.start_training, payload.end_training).set_index(['date']).drop('index', axis=1).add_prefix("sp_")
-    sp_test = import_from_db("S&P 500", MarketData, payload.start_testing, payload.end_testing).set_index(['date']).drop('index', axis=1).add_prefix("sp_")
-
-    nasdaq_train = import_from_db("NASDAQ", MarketData, payload.start_training, payload.end_training).set_index(['date']).drop('index', axis=1).add_prefix("nasdaq_")
-    nasdaq_test = import_from_db("NASDAQ", MarketData, payload.start_testing, payload.end_testing).set_index(['date']).drop('index', axis=1).add_prefix("nasdaq_")
-
-    train = stock_train.merge(sp_train, on="date").merge(nasdaq_train, on="date")
-    test = stock_test.merge(sp_test, on="date").merge(nasdaq_test, on="date")
+    [train, test] = import_data(
+        payload.ticker,
+        payload.start_training,
+        payload.end_training,
+        payload.start_testing,
+        payload.end_testing,
+    )
 
     X_train = train[payload.inputs]
     Y_train = train[payload.output]
@@ -203,38 +267,90 @@ def train_xgboost(payload):
     X_test = test[payload.inputs]
     Y_test = test[payload.output]
 
-    study = optuna.create_study(direction="maximize")
+    study = optuna.create_study(
+        storage=os.getenv("DATABASE_URL"),
+        study_name=f"{payload.ticker}_optimization_{uuid.uuid4()}",
+        direction="maximize",
+        pruner=optuna.pruners.MedianPruner(
+            n_startup_trials=5, n_warmup_steps=30, interval_steps=10
+        ),
+        load_if_exists=True,
+    )
 
     # --- CPU ---
-    study.optimize(lambda trial: main_cpu(trial, X_train, Y_train, X_test, Y_test, payload.severity, payload.n_estimators, payload.hyperparameter_space), n_trials=payload.trials)
-    
+    study.optimize(
+        lambda trial: main_cpu(
+            trial,
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            payload.severity,
+            payload.n_estimators,
+            payload.hyperparameter_space,
+        ),
+        n_trials=payload.trials,
+    )
+
     trial_params = study.best_trial.params
-    fixed_params = {        
-        'device':'cpu',
-        'tree_method':'hist',
-        'objective':'reg:squarederror',
-        'n_estimators':payload.n_estimators,
-        'n_jobs':-1
+    fixed_params = {
+        "device": "cpu",
+        "tree_method": "hist",
+        "objective": "reg:squarederror",
+        "n_estimators": payload.n_estimators,
+        "n_jobs": -1,
     }
-    
+
     best_model = XGBRegressor(**fixed_params, **trial_params)
     best_model.fit(X_train, Y_train)
 
     pic_name = uuid.uuid4()
 
     plot_importance(best_model, max_num_features=12)
-    plt.savefig(f'/app/storage/output_images/{pic_name}.png')
+    plt.savefig(f"/app/storage/output_images/{pic_name}.png")
 
     test_predictions(model=best_model, x_test=X_test, y_test=Y_test)
     print(eval_performance(best_model, X_test, Y_test, payload.severity))
 
-    [rmse, accuracy, score] = get_all_scores(best_model, X_test, Y_test, payload.severity)
+    [rmse, accuracy, score] = get_all_scores(
+        best_model, X_test, Y_test, payload.severity
+    )
 
-    save_xgboost(payload, study.best_trial.params, fixed_params, rmse, accuracy, score, pic_name)
+    save_xgboost(
+        payload, study.best_trial.params, fixed_params, rmse, accuracy, score, pic_name
+    )
+
+
+def make_pred(payload: XgboostPredictionRequest):
+    [train, test] = import_data(
+        payload.ticker,
+        payload.start_training,
+        payload.end_training,
+        payload.start_pred,
+        payload.end_pred,
+    )
+
+    print(payload.start_pred)
+
+    model_params = import_model(payload.model_id).iloc[0]
+
+    X_train = train[model_params.inputs]
+    Y_train = train[model_params.output]
+
+    X_test = test[model_params.inputs]
+
+    model = XGBRegressor(**model_params.fixed_params, **model_params.best_params)
+    model.fit(X_train, Y_train)
+
+    dates = [date.isoformat() for date in X_test.index.to_list()]
+    result = model.predict(X_test).astype(float)
+
+    return dict(zip(dates, result))
+
 
 if __name__ == "__main__":
-    train_xgboost(input('Ticker: '), 'test', 'test'), 
-    
+    train_xgboost(input("Ticker: "), "test", "test"),
+
 """    csv = import_data(ticker)
     X_train, Y_train, X_test, Y_test = split_data(csv)
 

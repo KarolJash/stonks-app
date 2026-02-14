@@ -3,14 +3,39 @@ from datetime import date
 from typing import Dict, List, Optional, Union
 from enum import Enum
 
+
 class TickerRequest(BaseModel):
     ticker: str
+
 
 class DelistCheckRequest(BaseModel):
     count: int
 
+
 class DelistAddRequest(BaseModel):
     ticker: str
+
+
+class XgboostPredictionRequest(BaseModel):
+    ticker: str
+    start_training: date
+    end_training: date
+    start_pred: date
+    end_pred: date
+    model_id: int
+
+    @model_validator(mode="after")
+    def check_dates(self):
+        if (
+            self.start_pred >= self.end_pred
+            or self.start_pred <= self.end_training
+            or self.start_training >= self.end_training
+        ):
+            raise ValueError(
+                "start has to be before end and training must come before testing"
+            )
+        return self
+
 
 class HyperparameterRange(BaseModel):
     min: int | float | None = None
@@ -18,18 +43,23 @@ class HyperparameterRange(BaseModel):
     categorical: List[str] | None = None
     log: bool = False
 
+
 class XgboostTrainingRequest(BaseModel):
-    ticker: str = Field(description="Unique ticker for desired stock (ex. AAPL HOOD MSFT)")
-    start_training: date = Field(description="Start of the training window (YYYY-MM-DD)")
+    ticker: str = Field(
+        description="Unique ticker for desired stock (ex. AAPL HOOD MSFT)"
+    )
+    start_training: date = Field(
+        description="Start of the training window (YYYY-MM-DD)"
+    )
     end_training: date = Field(description="End of the training window (YYYY-MM-DD)")
     start_testing: date = Field(description="Start of the training window (YYYY-MM-DD)")
     end_testing: date = Field(description="Start of the training window (YYYY-MM-DD)")
-    output: str = Field(description="Field that is being guessed (i.e. class_performance)")
+    output: str = Field(
+        description="Field that is being guessed (i.e. class_performance)"
+    )
     inputs: List[str]
     trials: int
-    n_estimators: int = Field(
-        default=1000
-    )
+    n_estimators: int = Field(default=1000)
     severity: float
     hyperparameter_space: Dict[str, HyperparameterRange] = Field(
         example={
@@ -42,12 +72,18 @@ class XgboostTrainingRequest(BaseModel):
             "reg_alpha": {"min": 1e-8, "max": 0.1},
             "min_child_weight": {"min": 1, "max": 7},
             "max_leaves": {"min": 32, "max": 256},
-            "max_bin": {"min": 50, "max": 1024}
+            "max_bin": {"min": 50, "max": 1024},
         }
     )
 
     @model_validator(mode="after")
     def check_dates(self):
-        if self.start_testing >= self.end_testing or self.start_testing <= self.end_training or self.start_training >= self.end_training:
-            raise ValueError('start has to be before end and training must come before testing')
+        if (
+            self.start_testing >= self.end_testing
+            or self.start_testing <= self.end_training
+            or self.start_training >= self.end_training
+        ):
+            raise ValueError(
+                "start has to be before end and training must come before testing"
+            )
         return self
