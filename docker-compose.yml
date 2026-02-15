@@ -21,10 +21,10 @@ services:
     depends_on:
       - postgres
   api:
-    build: . # Looks for the Dockerfile in the current directory
+    image: ghcr.io/karoljash/stonks-app:latest
     container_name: stock-prediction-api
     ports:
-      - "8000:8000" # Maps localhost:8000 to container:8000
+      - 8000:8000 # Maps localhost:8000 to container:8000
     environment:
       # This connects to the 'db' service defined below
       # Format: postgresql://user:password@SERVICE_NAME:PORT/db_name
@@ -32,22 +32,33 @@ services:
     depends_on:
       - postgres # Waits for the database to start before starting the API
     volumes:
-      - ./storage:/app/storage
-    command: uvicorn app.api:app --host 0.0.0.0 --port 8000 --reload
+      - stock_storage:/app/storage
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000
+  pigallery2:
+    image: bpatrik/pigallery2:latest
+    container_name: pigallery2
+    environment:
+      - NODE_ENV=production
+    volumes:
+      # Map your actual photo folder here
+      - stock_storage:/app/data/images:ro
+      # This stores the app's config and thumbnails
+      - ./pigallery_config:/app/data/config
+    ports:
+      - 8765:80
+    restart: always
   optuna-dashboard:
     image: ghcr.io/optuna/optuna-dashboard:latest
     container_name: optuna-dashboard
     restart: always
     ports:
-      - "1234:1234"
+      - 1234:1234
     # If your DB is also in docker, use 'depends_on' so it starts first
     depends_on:
       - postgres
-
     # The command overrides the default arguments
     # Syntax: <storage_url> --host <host> --port <port>
-    command: >
-      ${DATABASE_URL}
-      --host 0.0.0.0
-      --port 1234
+    command: ${DATABASE_URL} --host 0.0.0.0 --port 1234
 networks: {}
+volumes:
+  stock_storage: null

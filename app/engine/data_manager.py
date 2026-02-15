@@ -14,7 +14,7 @@ def insert_on_conflict(table, conn, keys, data_iter):
 
     update_dict = {
         col.name: stmt.excluded[col.name]
-        for col in StockData.__table__.columns
+        for col in table.__table__.columns
         if col.name
         not in ["date", "ticker", "index"]  # Optional: Skip keys if you want
     }
