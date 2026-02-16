@@ -195,6 +195,8 @@ def eval_performance(model, d_test, y_test, severity):
     print("Evaluating Performance")
     preds = model.predict(d_test)
 
+    np.clip(preds, 0, 4)
+
     accuracy = accuracy_score(y_test, np.round(preds))
     rmse = mean_squared_error(y_test, preds)
 
@@ -208,6 +210,8 @@ def test_predictions(model, x_test, y_test):
     preds = model.predict(x_test)
     prediction_data = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0}
     real_data = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0}
+
+    np.clip(preds, 0, 4)
 
     for i in range(len(y_test)):
         prediction_data[str(round(preds[i]))] += 1
