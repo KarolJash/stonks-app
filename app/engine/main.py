@@ -211,7 +211,7 @@ def test_predictions(model, x_test, y_test):
     prediction_data = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0}
     real_data = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0}
 
-    np.clip(preds, 0, 4)
+    preds = np.clip(preds, 0.0, 4.0)
 
     for i in range(len(y_test)):
         prediction_data[str(round(preds[i]))] += 1
