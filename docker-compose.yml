@@ -21,7 +21,8 @@ services:
     depends_on:
       - postgres
   api:
-    image: ghcr.io/karoljash/stonks-app:latest
+    build: .
+    #image: ghcr.io/karoljash/stonks-app:latest
     container_name: stock-prediction-api
     ports:
       - 8000:8000 # Maps localhost:8000 to container:8000
@@ -32,6 +33,7 @@ services:
     depends_on:
       - postgres # Waits for the database to start before starting the API
     volumes:
+      - ./app:/app/app
       - stock_storage:/app/storage
     command: uvicorn app.api:app --host 0.0.0.0 --port 8000
   pigallery2:

@@ -13,10 +13,9 @@ def insert_on_conflict(table, conn, keys, data_iter):
     stmt = insert(table.table).values(data)
 
     update_dict = {
-        col.name: stmt.excluded[col.name]
-        for col in table.__table__.columns
-        if col.name
-        not in ["date", "ticker", "index"]  # Optional: Skip keys if you want
+        col: stmt.excluded[col]
+        for col in keys
+        if col not in ["date", "ticker", "index"]  # Optional: Skip keys if you want
     }
 
     on_conflict_stmt = stmt.on_conflict_do_update(
