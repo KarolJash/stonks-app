@@ -155,8 +155,11 @@ def define_model(trial, n_estimators, hyperparameter_space):
             params[name] = trial.suggest_float(
                 name, space.min, space.max, log=space.log
             )
-        elif isinstance(space.categorical, str):
+        elif space.categorical and isinstance(space.categorical[0], str):
+            print(name)
             params[name] = trial.suggest_categorical(name, space.categorical)
+
+    print(params)
 
     return XGBRegressor(
         # --- GPU Params ---
@@ -252,7 +255,7 @@ def get_all_scores(model, d_test, y_test, severity):
     return [rmse, round(accuracy * 100, 2), accuracy - severity * rmse * rmse]
 
 
-def train_xgboost(payload):
+def train_xgboost(payload: XgboostPredictionRequest):
     [train, test] = import_data(
         payload.ticker,
         payload.start_training,
