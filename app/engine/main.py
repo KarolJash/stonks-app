@@ -159,8 +159,6 @@ def define_model(trial, n_estimators, hyperparameter_space):
             print(name)
             params[name] = trial.suggest_categorical(name, space.categorical)
 
-    print(params)
-
     return XGBRegressor(
         # --- GPU Params ---
         device="cpu",
