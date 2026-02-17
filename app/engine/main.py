@@ -251,6 +251,8 @@ def main_gpu(trial, d_train, d_test, Y_test):
 def get_all_scores(model, d_test, y_test, severity):
     preds = model.predict(d_test)
 
+    preds = np.clip(preds, 0.0, 4.0)
+
     accuracy = accuracy_score(y_test, np.round(preds))
     rmse = mean_squared_error(y_test, preds)
 
