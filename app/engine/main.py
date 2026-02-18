@@ -317,7 +317,7 @@ def train_xgboost(payload: XgboostPredictionRequest):
     plt.savefig(f"/app/storage/output_images/{pic_name}.png")
 
     test_predictions(model=best_model, x_test=X_test, y_test=Y_test)
-    print(eval_performance(best_model, X_test, Y_test, payload.severity))
+    # print(eval_performance(best_model, X_test, Y_test, payload.severity))
 
     [rmse, accuracy, score] = get_all_scores(
         best_model, X_test, Y_test, payload.severity

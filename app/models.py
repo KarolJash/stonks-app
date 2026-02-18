@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.db import Base
 
+
 class StockData(Base):
     __tablename__ = "stocks"
 
@@ -26,7 +27,7 @@ class StockData(Base):
     q2_yoy: Mapped[Optional[float]]
     q3_yoy: Mapped[Optional[float]]
     q4_yoy: Mapped[Optional[float]]
-    
+
     surprise_q1: Mapped[Optional[float]]
     surprise_q2: Mapped[Optional[float]]
     surprise_q3: Mapped[Optional[float]]
@@ -46,20 +47,20 @@ class StockData(Base):
     proximity_a: Mapped[Optional[float]]
     proximity_b: Mapped[Optional[float]]
     proximity_c: Mapped[Optional[float]]
-    
+
     acc_weighted: Mapped[float]
     dis_weighted: Mapped[float]
     acc_dis: Mapped[float]
-    
+
     rs: Mapped[float]
     rsi: Mapped[Optional[float]]
     rsi_weighted: Mapped[float]
     rsi_momentum: Mapped[Optional[float]]
-    
+
     volume_expansion: Mapped[Optional[float]]
     energy: Mapped[Optional[float]]
-    volume_change: Mapped[Optional[float]] 
-    
+    volume_change: Mapped[Optional[float]]
+
     macd: Mapped[float]
     macd_slope: Mapped[Optional[float]]
 
@@ -67,11 +68,14 @@ class StockData(Base):
     price_range_position: Mapped[Optional[float]]
     normalized_slope: Mapped[Optional[float]]
     z_score: Mapped[Optional[float]]
-    
+
     class_performance: Mapped[Optional[float]]
     beat_sp: Mapped[int]
 
-    __table_args__ = (UniqueConstraint('date', 'ticker', name='_date_ticker_uc_stocks_'),)
+    __table_args__ = (
+        UniqueConstraint("date", "ticker", name="_date_ticker_uc_stocks_"),
+    )
+
 
 class MarketData(Base):
     __tablename__ = "market"
@@ -108,7 +112,10 @@ class MarketData(Base):
     nh_nl_pct: Mapped[float]
     nh_nl_ratio: Mapped[float]
 
-    __table_args__ = (UniqueConstraint('date', 'ticker', name='_date_ticker_uc_market_'),)
+    __table_args__ = (
+        UniqueConstraint("date", "ticker", name="_date_ticker_uc_market_"),
+    )
+
 
 class XGBoostData(Base):
     __tablename__ = "xgboost"
@@ -133,3 +140,13 @@ class XGBoostData(Base):
     rmse: Mapped[float]
     accuracy: Mapped[float]
     score: Mapped[float]
+
+
+class UserData(Base):
+    __tablename__ = "user_data"
+
+    index: Mapped[int] = mapped_column(primary_key=True, index=True)
+    username: Mapped[str]
+    email: Mapped[str]
+    hashed_password: Mapped[str]
+    disabled: Mapped[bool]

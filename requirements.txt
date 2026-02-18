@@ -21,3 +21,6 @@ requests-html
 pytickersymbols
 requests_html
 yahoo_fin
+pwdlib[argon2]
+pyjwt
+python-multipart

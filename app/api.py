@@ -1,10 +1,15 @@
-from fastapi import FastAPI, BackgroundTasks, status, Depends
+from fastapi import FastAPI, BackgroundTasks, status, Depends, HTTPException, Security
+from fastapi.security import OAuth2PasswordRequestForm
+
+from datetime import timedelta
+from typing import Annotated
 
 from app.engine.data import download_ticker
 from app.engine.delist import check_delisted, add_delisted
 from app.engine.market import market
 from app.engine.main import train_xgboost, make_pred
 from app.dependencies import db_validate_ticker, real_ticker, db_validate_model
+from app.engine.auth import authenticate_user, create_access_token
 
 from app.schemas import (
     TickerRequest,
@@ -12,9 +17,27 @@ from app.schemas import (
     DelistAddRequest,
     XgboostTrainingRequest,
     XgboostPredictionRequest,
+    Token,
 )
 
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
 app = FastAPI()
+
+
+@app.post("/token")
+async def login_for_access_token(
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+) -> Token:
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username, "scope": " ".join(form_data.scopes)},
+        expires_delta=access_token_expires,
+    )
+    return Token(access_token=access_token, token_type="bearer")
 
 
 @app.post("/download/stock", status_code=status.HTTP_202_ACCEPTED)

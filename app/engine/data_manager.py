@@ -4,7 +4,7 @@ from sqlalchemy import select
 from datetime import datetime
 
 from app.db import engine, Base, SessionLocal
-from app.models import StockData, MarketData, XGBoostData
+from app.models import StockData, MarketData, XGBoostData, UserData
 
 
 def insert_on_conflict(table, conn, keys, data_iter):
@@ -38,6 +38,12 @@ def save_to_db(df: pd.DataFrame, tablename):
         index=False,
         method=insert_on_conflict,
     )
+
+
+def get_user(username: str):
+    query = select(UserData).where(UserData.username == username)
+
+    return SessionLocal.execute(query).scalar_one()
 
 
 def import_from_db(ticker, table, start, end):
