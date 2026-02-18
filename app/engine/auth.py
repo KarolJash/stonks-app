@@ -1,6 +1,8 @@
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+from dotenv import load_dotenv, find_dotenv
+from pathlib import Path
 
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Security, status
@@ -12,13 +14,14 @@ from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
 from pydantic import BaseModel, ValidationError
 
-from app.schemas import (
-    TokenData,
-    User,
-)
-from app.engine.data_manager import get_user
+from app.schemas import TokenData, User, UserCreate
+from app.engine.data_manager import get_user, upload_new_user
+from app.models import UserData
+
+load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY")
+MASTER_PASSWORD = os.getenv("MASTER_PASSWORD")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -30,12 +33,33 @@ oauth2_scheme = OAuth2PasswordBearer(
 )
 
 
+def create_user(user: UserCreate):
+    if user.master_password == MASTER_PASSWORD:
+        hashed_password = password_hash.hash(user.password)
+
+        db_user = UserData(
+            username=user.username,
+            hashed_password=hashed_password,
+            email=user.email,
+            full_name=user.full_name,
+            disabled=False,
+        )
+
+        upload_new_user(db_user)
+
+        return db_user
+    else:
+        return False
+
+
 def verify_password(plain_password, hashed_password):
     return password_hash.verify(plain_password, hashed_password)
 
 
 def authenticate_user(username: str, password: str):
     user = get_user(username)
+    if user is None:
+        return False
     if not verify_password(password, user.hashed_password):
         return False
     return user

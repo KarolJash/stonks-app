@@ -9,7 +9,8 @@ from app.engine.delist import check_delisted, add_delisted
 from app.engine.market import market
 from app.engine.main import train_xgboost, make_pred
 from app.dependencies import db_validate_ticker, real_ticker, db_validate_model
-from app.engine.auth import authenticate_user, create_access_token
+from app.engine.auth import authenticate_user, create_access_token, create_user
+from app.engine.data_manager import get_user
 
 from app.schemas import (
     TickerRequest,
@@ -18,6 +19,7 @@ from app.schemas import (
     XgboostTrainingRequest,
     XgboostPredictionRequest,
     Token,
+    UserCreate,
 )
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -38,6 +40,21 @@ async def login_for_access_token(
         expires_delta=access_token_expires,
     )
     return Token(access_token=access_token, token_type="bearer")
+
+
+@app.post("/register")
+def register_user(user: UserCreate):
+    db_user = get_user(username=user.username)
+
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+
+    result = create_user(user=user)
+
+    if result is False:
+        raise HTTPException(status_code=400, detail="Blocked from creating user")
+
+    return {"message": "New user successfully created!"}
 
 
 @app.post("/download/stock", status_code=status.HTTP_202_ACCEPTED)

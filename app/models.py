@@ -143,10 +143,11 @@ class XGBoostData(Base):
 
 
 class UserData(Base):
-    __tablename__ = "user_data"
+    __tablename__ = "users"
 
     index: Mapped[int] = mapped_column(primary_key=True, index=True)
     username: Mapped[str]
     email: Mapped[str]
     hashed_password: Mapped[str]
     disabled: Mapped[bool]
+    full_name: Mapped[str]

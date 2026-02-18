@@ -5,6 +5,7 @@ from datetime import datetime
 
 from app.db import engine, Base, SessionLocal
 from app.models import StockData, MarketData, XGBoostData, UserData
+from app.schemas import User
 
 
 def insert_on_conflict(table, conn, keys, data_iter):
@@ -43,7 +44,16 @@ def save_to_db(df: pd.DataFrame, tablename):
 def get_user(username: str):
     query = select(UserData).where(UserData.username == username)
 
-    return SessionLocal.execute(query).scalar_one()
+    return SessionLocal().execute(query).scalar_one_or_none()
+
+
+def upload_new_user(user):
+    db = SessionLocal()
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    db.close()
 
 
 def import_from_db(ticker, table, start, end):

@@ -26,6 +26,8 @@ services:
     container_name: stock-prediction-api
     ports:
       - 8000:8000 # Maps localhost:8000 to container:8000
+    env_file:
+      - .env
     environment:
       # This connects to the 'db' service defined below
       # Format: postgresql://user:password@SERVICE_NAME:PORT/db_name
