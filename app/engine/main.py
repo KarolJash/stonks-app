@@ -156,7 +156,6 @@ def define_model(trial, n_estimators, hyperparameter_space):
                 name, space.min, space.max, log=space.log
             )
         elif space.categorical and isinstance(space.categorical[0], str):
-            print(name)
             params[name] = trial.suggest_categorical(name, space.categorical)
 
     return XGBRegressor(
@@ -191,12 +190,15 @@ def train_model_gpu(params, d_train, d_test, trial):
     )
 
 
-def eval_performance(model, d_test, y_test, severity):
+def eval_performance(model, d_test, y_test, severity, trial):
     print("Evaluating Performance")
     preds = model.predict(d_test)
 
     accuracy = accuracy_score(y_test, np.round(preds))
     rmse = mean_squared_error(y_test, preds)
+
+    trial.set_user_attr("accuracy", accuracy)
+    trial.set_user_attr("rmse", rmse)
 
     print("Accuracy was: " + str(round(accuracy * 100, 2)) + "%")
     print("RMSE: " + str(rmse))
@@ -232,7 +234,7 @@ def main_cpu(
     model = define_model(trial, n_estimators, hyperparameter_space)
     train_model_cpu(model, X_train, Y_train)
 
-    score = eval_performance(model, X_test, Y_test, severity)
+    score = eval_performance(model, X_test, Y_test, severity, trial)
 
     return score
 
