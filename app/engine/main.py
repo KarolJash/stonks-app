@@ -197,7 +197,7 @@ def eval_performance(model, d_test, y_test, severity, trial):
     accuracy = accuracy_score(y_test, np.round(preds))
     rmse = mean_squared_error(y_test, preds)
 
-    trial.set_user_attr("accuracy", accuracy)
+    trial.set_user_attr("accuracy", f"{round(accuracy * 100, 2)}%")
     trial.set_user_attr("rmse", rmse)
 
     print("Accuracy was: " + str(round(accuracy * 100, 2)) + "%")
