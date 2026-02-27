@@ -151,3 +151,4 @@ class UserData(Base):
     hashed_password: Mapped[str]
     disabled: Mapped[bool]
     full_name: Mapped[str]
+    scopes: Mapped[list] = mapped_column(JSONB)

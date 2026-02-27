@@ -8,12 +8,9 @@ class TickerRequest(BaseModel):
     ticker: str
 
 
-class DelistCheckRequest(BaseModel):
-    count: int
-
-
-class DelistAddRequest(BaseModel):
-    ticker: str
+class PasswordUpdate(BaseModel):
+    new_password: str
+    username: str
 
 
 class XgboostPredictionRequest(BaseModel):

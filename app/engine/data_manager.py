@@ -1,6 +1,6 @@
 import pandas as pd
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import select
+from sqlalchemy import select, update
 from datetime import datetime
 
 from app.db import engine, Base, SessionLocal
@@ -47,7 +47,23 @@ def get_user(username: str):
     return SessionLocal().execute(query).scalar_one_or_none()
 
 
+def update_user_password(username: str, hashed_password: str):
+    with SessionLocal() as session:
+        query = (
+            update(UserData)
+            .where(UserData.username == username)
+            .values(hashed_password=hashed_password)
+        )
+
+        session.execute(query)
+        session.commit()
+
+    return True
+
+
 def upload_new_user(user):
+    Base.metadata.create_all(bind=engine)
+
     db = SessionLocal()
 
     db.add(user)
