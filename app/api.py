@@ -1,6 +1,7 @@
 from fastapi import FastAPI, BackgroundTasks, status, Depends, HTTPException, Security
 from fastapi.security import OAuth2PasswordRequestForm
 from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 
 from datetime import timedelta
 from typing import Annotated
@@ -37,6 +38,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# 1. Define the allowed origins (your frontend's IP and port)
+origins = [
+    "http://172.24.10.91:3000",
+    "http://localhost:3000",
+]
+
+# 2. Add the middleware to the app
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Allows your frontend IP
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows GET, POST, etc.
+    allow_headers=["*"],  # Allows all headers (Content-Type, etc.)
+)
 
 
 @app.post("/user/token")
