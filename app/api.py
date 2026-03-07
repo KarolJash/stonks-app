@@ -2,6 +2,8 @@ from fastapi import FastAPI, BackgroundTasks, status, Depends, HTTPException, Se
 from fastapi.security import OAuth2PasswordRequestForm
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+import yfinance as yf
+import psutil
 
 from datetime import timedelta
 from typing import Annotated
@@ -124,6 +126,75 @@ async def download_stock(
     background_tasks.add_task(download_ticker, ticker)
 
     return {"message": f"Task {ticker} accepted. Check status later."}
+
+
+@app.post("/market", status_code=status.HTTP_202_ACCEPTED)
+async def fetch_market_price(
+    payload: TickerRequest,
+    ticker: str = Depends(real_ticker),
+):
+    t = yf.Ticker(ticker)
+    info = t.info or {}
+    # Try common name fields
+    name = info.get("longName") or info.get("shortName") or info.get("companyName")
+
+    # Price fields
+    current = info.get("regularMarketPrice")
+    prev_close = info.get("regularMarketPreviousClose") or info.get("previousClose")
+
+    # Fallback to history if info fields are missing
+    if current is None or prev_close is None:
+        hist = t.history(period="2d", interval="1d")
+        if not hist.empty:
+            # last available close and previous close
+            if current is None:
+                current = hist["Close"].iloc[-1]
+            if prev_close is None and len(hist) > 1:
+                prev_close = hist["Close"].iloc[-2]
+            elif prev_close is None:
+                prev_close = hist["Close"].iloc[0]
+
+    if current is None or prev_close is None:
+        raise ValueError(
+            "Could not retrieve current price or previous close for " + ticker
+        )
+
+    pct_change = (current - prev_close) / prev_close * 100
+
+    if pct_change > 0:
+        dir = True
+    else:
+        dir = False
+
+    return {
+        "message": "Success",
+        "ticker": ticker,
+        "price": current,
+        "pct_change": round(abs(pct_change), 2),
+        "up": dir,
+        "name": name,
+    }
+
+
+@app.get("/system/stats", status_code=status.HTTP_200_OK)
+async def get_system_stats():
+    """
+    Returns real-time server health metrics.
+    interval=1 is required for psutil to calculate the change over time accurately.
+    """
+    try:
+        # Get CPU usage percentage
+        # Setting interval=1 makes it wait 1s to get a true reading,
+        # but since this is an async dashboard call, we'll use None or 0.1 for speed.
+        cpu_pct = psutil.cpu_percent(interval=0.1)
+
+        return {
+            "message": "Success",
+            "cpu_percentage": cpu_pct,
+            "status": "healthy" if cpu_pct < 85 else "strained",
+        }
+    except Exception as e:
+        return {"message": "Error retrieving system stats", "detail": str(e)}
 
 
 @app.post("/download/market", status_code=status.HTTP_202_ACCEPTED)

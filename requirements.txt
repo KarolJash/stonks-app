@@ -24,3 +24,4 @@ yahoo_fin
 pwdlib[argon2]
 pyjwt
 python-multipart
+psutil
