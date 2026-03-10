@@ -6,7 +6,7 @@ fastapi
 python-dotenv
 curl_cffi
 numpy
-optuna
+optuna==4.6.0
 matplotlib
 xgboost
 scikit-learn
@@ -25,4 +25,3 @@ pwdlib[argon2]
 pyjwt
 python-multipart
 psutil
-optuna-dashboard
