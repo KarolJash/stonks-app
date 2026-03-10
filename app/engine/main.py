@@ -383,7 +383,7 @@ def train_xgboost(payload: XgboostPredictionRequest, task_id: str):
         update_task(task_id, status="failed", error_message=str(e))
 
 
-def make_pred(payload: XgboostPredictionRequest, manager):
+def make_pred(payload: XgboostPredictionRequest):
     try:
         [train, test] = import_data(
             payload.ticker,
