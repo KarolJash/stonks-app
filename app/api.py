@@ -266,14 +266,14 @@ def download_market(
 
 
 @app.post("/xgboost/predict", status_code=status.HTTP_202_ACCEPTED)
-async def xgboost_pred(
+def xgboost_pred(
     payload: XgboostPredictionRequest,
     current_user: Annotated[
         User, Security(get_current_active_user, scopes=["model:predict"])
     ],
     valid_ticker: str = Depends(db_validate_model),
 ):
-    result = await make_pred(payload)
+    result = make_pred(payload)
 
     print(result)
 
