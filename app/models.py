@@ -1,4 +1,12 @@
-from sqlalchemy import Integer, String, ForeignKey, UniqueConstraint, BigInteger
+from sqlalchemy import (
+    Integer,
+    String,
+    ForeignKey,
+    UniqueConstraint,
+    BigInteger,
+    func,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -141,6 +149,21 @@ class XGBoostData(Base):
     accuracy: Mapped[float]
     score: Mapped[float]
 
+    # new columns
+    created_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+    feature_importance: Mapped[dict] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
+    hyperparameters_importance: Mapped[dict] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
+    published: Mapped[bool] = mapped_column(server_default=text("false"))
+
 
 class UserData(Base):
     __tablename__ = "users"
@@ -152,3 +175,17 @@ class UserData(Base):
     disabled: Mapped[bool]
     full_name: Mapped[str]
     scopes: Mapped[list] = mapped_column(JSONB)
+
+
+class TasksData(Base):
+    __tablename__ = "tasks"
+
+    index: Mapped[int] = mapped_column(primary_key=True, index=True)
+    action: Mapped[str]
+    ticker: Mapped[str]
+    full_name: Mapped[str]
+    status: Mapped[str]
+    epoch: Mapped[str]
+    created_at: Mapped[str]
+    error_message: Mapped[str | None] = mapped_column(nullable=True)
+    task_type: Mapped[str]

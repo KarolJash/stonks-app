@@ -19,12 +19,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 6. Copy the rest of your application code
+# 6. Copy your application code AND Alembic migration files
 COPY ./app ./app
 COPY ./storage ./storage
+COPY ./alembic ./alembic
+COPY alembic.ini .
 
-# 7. Expose the port FastAPI will run on
+# 7. Copy the startup script and make it executable
+COPY start.sh .
+RUN chmod +x start.sh
+
+# 8. Expose the port FastAPI will run on
 EXPOSE 8000
 
-# 8. Command to run the application using Uvicorn
-CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# 9. Command to run the application using the startup script
+CMD ["./start.sh"]

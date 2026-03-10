@@ -5,6 +5,7 @@ matplotlib.use("Agg")
 import uuid
 import numpy as np
 import optuna
+from optuna.storages import RDBStorage
 import matplotlib.pyplot as plt
 import xgboost as xgb
 from xgboost import XGBRegressor, plot_importance, plot_tree, to_graphviz
@@ -13,11 +14,13 @@ from sklearn.preprocessing import StandardScaler
 from sqlalchemy import select
 import os
 from dotenv import load_dotenv
+from math import nan
 
 from app.models import StockData, MarketData
 from app.db import SessionLocal
 from app.engine.data_manager import import_from_db, save_xgboost, import_model
 from app.schemas import XgboostPredictionRequest
+from app.engine.data_manager import update_task
 
 load_dotenv()
 
@@ -259,100 +262,172 @@ def get_all_scores(model, d_test, y_test, severity):
     return [rmse, round(accuracy * 100, 2), accuracy - severity * rmse * rmse]
 
 
-def train_xgboost(payload: XgboostPredictionRequest):
-    [train, test] = import_data(
-        payload.ticker,
-        payload.start_training,
-        payload.end_training,
-        payload.start_testing,
-        payload.end_testing,
-    )
-
-    X_train = train[payload.inputs]
-    Y_train = train[payload.output]
-
-    X_test = test[payload.inputs]
-    Y_test = test[payload.output]
-
-    study = optuna.create_study(
-        storage=os.getenv("DATABASE_URL"),
-        study_name=f"{payload.ticker}_optimization_{uuid.uuid4()}",
-        direction="maximize",
-        pruner=optuna.pruners.MedianPruner(
-            n_startup_trials=5, n_warmup_steps=30, interval_steps=10
-        ),
-        load_if_exists=True,
-    )
-
-    # --- CPU ---
-    study.optimize(
-        lambda trial: main_cpu(
-            trial,
-            X_train,
-            Y_train,
-            X_test,
-            Y_test,
-            payload.severity,
-            payload.n_estimators,
-            payload.hyperparameter_space,
-        ),
-        n_trials=payload.trials,
-    )
-
-    trial_params = study.best_trial.params
-    fixed_params = {
-        "device": "cpu",
-        "tree_method": "hist",
-        "objective": "reg:squarederror",
-        "n_estimators": payload.n_estimators,
-        "n_jobs": -1,
-    }
-
-    best_model = XGBRegressor(**fixed_params, **trial_params)
-    best_model.fit(X_train, Y_train)
-
-    pic_name = uuid.uuid4()
-
-    plot_importance(best_model, max_num_features=12)
-    plt.savefig(f"/app/storage/output_images/{pic_name}.png")
-
-    test_predictions(model=best_model, x_test=X_test, y_test=Y_test)
-    # print(eval_performance(best_model, X_test, Y_test, payload.severity))
-
-    [rmse, accuracy, score] = get_all_scores(
-        best_model, X_test, Y_test, payload.severity
-    )
-
-    save_xgboost(
-        payload, study.best_trial.params, fixed_params, rmse, accuracy, score, pic_name
-    )
+def sanitize_for_db(data):
+    """Recursively converts NumPy types to standard Python types for JSON serialization."""
+    if isinstance(data, dict):
+        return {k: sanitize_for_db(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_for_db(v) for v in data]
+    elif isinstance(data, (np.float32, np.float64)):
+        return float(data)
+    elif isinstance(data, (np.int32, np.int64)):
+        return int(data)
+    elif isinstance(data, np.ndarray):
+        return data.tolist()
+    return data
 
 
-def make_pred(payload: XgboostPredictionRequest):
-    [train, test] = import_data(
-        payload.ticker,
-        payload.start_training,
-        payload.end_training,
-        payload.start_pred,
-        payload.end_pred,
-    )
+def train_xgboost(payload: XgboostPredictionRequest, task_id: str):
+    try:
+        [train, test] = import_data(
+            payload.ticker,
+            payload.start_training,
+            payload.end_training,
+            payload.start_testing,
+            payload.end_testing,
+        )
 
-    print(payload.start_pred)
+        X_train = train[payload.inputs]
+        Y_train = train[payload.output]
 
-    model_params = import_model(payload.model_id).iloc[0]
+        X_test = test[payload.inputs]
+        Y_test = test[payload.output]
 
-    X_train = train[model_params.inputs]
-    Y_train = train[model_params.output]
+        storage = RDBStorage(
+            url=os.getenv("DATABASE_URL"),
+            skip_compatibility_check=True,  # <-- This is the magic bullet
+        )
 
-    X_test = test[model_params.inputs]
+        study = optuna.create_study(
+            storage=storage,
+            study_name=f"{payload.ticker}_optimization_{uuid.uuid4()}",
+            direction="maximize",
+            pruner=optuna.pruners.MedianPruner(
+                n_startup_trials=5, n_warmup_steps=30, interval_steps=10
+            ),
+            load_if_exists=True,
+        )
 
-    model = XGBRegressor(**model_params.fixed_params, **model_params.best_params)
-    model.fit(X_train, Y_train)
+        def task_callback(study, trial):
+            if (trial.number + 1) % 5 == 0:
+                update_task(task_id, epoch=f"{trial.number + 1}/{payload.trials}")
 
-    dates = [date.isoformat() for date in X_test.index.to_list()]
-    result = model.predict(X_test).astype(float)
+        # --- CPU ---
+        study.optimize(
+            lambda trial: main_cpu(
+                trial,
+                X_train,
+                Y_train,
+                X_test,
+                Y_test,
+                payload.severity,
+                payload.n_estimators,
+                payload.hyperparameter_space,
+            ),
+            n_trials=payload.trials,
+            callbacks=[task_callback],
+        )
 
-    return dict(zip(dates, result))
+        trial_params = study.best_trial.params
+        fixed_params = {
+            "device": "cpu",
+            "tree_method": "hist",
+            "objective": "reg:squarederror",
+            "n_estimators": payload.n_estimators,
+            "n_jobs": -1,
+        }
+
+        best_model = XGBRegressor(**fixed_params, **trial_params)
+        best_model.fit(X_train, Y_train)
+
+        pic_name = uuid.uuid4()
+
+        plot_importance(best_model, max_num_features=12)
+        plt.savefig(f"/app/storage/output_images/{pic_name}.png")
+
+        test_predictions(model=best_model, x_test=X_test, y_test=Y_test)
+        # print(eval_performance(best_model, X_test, Y_test, payload.severity))
+
+        [rmse, accuracy, score] = get_all_scores(
+            best_model, X_test, Y_test, payload.severity
+        )
+
+        param_importances = optuna.importance.get_param_importances(study)
+        feature_importances = best_model.feature_importances_
+
+        hyper_data = [
+            {"param": k, "importance": v} for k, v in param_importances.items()
+        ]
+        feature_data = [
+            {"feature": k, "importance": v}
+            for k, v in zip(X_train.columns, feature_importances)
+        ]
+
+        clean_features = sanitize_for_db(feature_data)
+        clean_hypers = sanitize_for_db(hyper_data)
+
+        save_xgboost(
+            payload,
+            study.best_trial.params,
+            fixed_params,
+            rmse,
+            accuracy,
+            score,
+            pic_name,
+            clean_hypers,
+            clean_features,
+        )
+
+        update_task(task_id, "completed", f"{payload.trials}/{payload.trials}", "")
+    except Exception as e:
+        update_task(task_id, status="failed", error_message=str(e))
+
+
+def make_pred(payload: XgboostPredictionRequest, manager):
+    try:
+        [train, test] = import_data(
+            payload.ticker,
+            payload.start_training,
+            payload.end_training,
+            payload.start_pred,
+            payload.end_pred,
+        )
+
+        model_params = import_model(payload.model_id).iloc[0]
+
+        X_train = train[model_params.inputs]
+        Y_train = train[model_params.output]
+
+        X_test = test[model_params.inputs]
+
+        model = XGBRegressor(**model_params.fixed_params, **model_params.best_params)
+        model.fit(X_train, Y_train)
+
+        dates = [date.isoformat() for date in X_test.index.to_list()]
+        predictions = model.predict(X_test).astype(float)
+
+        return {
+            "forecast": [
+                {
+                    "date": date,
+                    "predict": float(pred),
+                    "actual": None if np.isnan(act) else act,
+                }
+                for date, pred, act in sorted(
+                    zip(dates, predictions, test[model_params.output]),
+                    key=lambda x: x[0],
+                )
+            ],
+            "model_info": {
+                "model_id": f"{model_params.ticker}-{model_params['index']}",
+                "accuracy": model_params.accuracy,
+                "rmse": float(model_params.rmse),
+                "updated": model_params.updated_at,
+                "published": bool(model_params.published),
+            },
+        }
+    except Exception as e:
+        print(e)
 
 
 if __name__ == "__main__":

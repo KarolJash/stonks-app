@@ -17,6 +17,7 @@ from app.engine.indicators.banner import gen_banner
 from app.engine.indicators.animation import start_animation, end_animation
 from app.engine.data_manager import save_to_db
 from app.models import MarketData
+from app.engine.data_manager import update_task
 
 """
 Market Strength:
@@ -135,115 +136,137 @@ def new_low(stock, df):
     df["new low"] = df["new low"].add((stock["Low"] == low).astype(int), fill_value=0)
 
 
-def market():
-    load_dotenv()
-    gen_banner()
+def market(task_id):
+    try:
+        load_dotenv()
+        gen_banner()
 
-    [sl, t] = start_animation("Loading TICKERS ")
+        [sl, t] = start_animation("Loading TICKERS ")
 
-    sp_tickers = get_market_tickers()
-    nasdaq_tickers = si.tickers_nasdaq()
+        sp_tickers = get_market_tickers()
+        nasdaq_tickers = si.tickers_nasdaq()
 
-    end_animation(sl, t)
+        total = len(nasdaq_tickers) + len(sp_tickers) + 3
 
-    session = requests.Session(impersonate="chrome120")
-    session.headers.update(
-        {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0 Safari/537.36",
-            "Referer": "https://finance.yahoo.com/",
+        update_task(task_id, epoch=f"0/{total}")
+
+        end_animation(sl, t)
+
+        session = requests.Session(impersonate="chrome120")
+        session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0 Safari/537.36",
+                "Referer": "https://finance.yahoo.com/",
+            }
+        )
+
+        sp = yf.download(
+            tickers=["^GSPC"],
+            period="12y",
+            group_by="ticker",
+            interval="1wk",
+            session=session,
+            threads=True,
+        )["^GSPC"]
+        nasdaq = yf.download(
+            tickers=["^IXIC"],
+            period="12y",
+            group_by="ticker",
+            interval="1wk",
+            session=session,
+            threads=True,
+        )["^IXIC"]
+        vix = yf.download(
+            tickers=["^VIX"],
+            period="12y",
+            group_by="ticker",
+            interval="1wk",
+            session=session,
+            threads=True,
+        )["^VIX"]
+
+        sp.columns = sp.columns.str.lower()
+        nasdaq.columns = nasdaq.columns.str.lower()
+        vix.columns = vix.columns.str.lower()
+
+        vix["% Change"] = round((vix["close"] - vix["open"]) / vix["open"] * 100, 2)
+        sma_indicators(vix)
+        sma_indicators(sp)
+        sma_indicators(nasdaq)
+
+        update_task(task_id, epoch=f"3/{total}")
+
+        sp_download = yf.download(
+            tickers=sp_tickers,
+            period="12y",
+            group_by="ticker",
+            interval="1wk",
+            session=session,
+            threads=True,
+        )
+        sp_dic = {
+            ticker: sp_download.xs(ticker, axis=1, level=0) for ticker in sp_tickers
         }
-    )
 
-    sp = yf.download(
-        tickers=["^GSPC"],
-        period="12y",
-        group_by="ticker",
-        interval="1wk",
-        session=session,
-        threads=True,
-    )["^GSPC"]
-    nasdaq = yf.download(
-        tickers=["^IXIC"],
-        period="12y",
-        group_by="ticker",
-        interval="1wk",
-        session=session,
-        threads=True,
-    )["^IXIC"]
-    vix = yf.download(
-        tickers=["^VIX"],
-        period="12y",
-        group_by="ticker",
-        interval="1wk",
-        session=session,
-        threads=True,
-    )["^VIX"]
+        for ticker, data in sp_dic.items():
+            if data.empty:
+                print("🚩🚩🚩 " + ticker + " failed")
+                continue
 
-    sp.columns = sp.columns.str.lower()
-    nasdaq.columns = nasdaq.columns.str.lower()
-    vix.columns = vix.columns.str.lower()
+            calc_up_down(data, sp)
+            stocks_above_40(data, sp)
+            new_high(data, sp)
+            new_low(data, sp)
 
-    vix["% Change"] = round((vix["close"] - vix["open"]) / vix["open"] * 100, 2)
-    sma_indicators(vix)
-    sma_indicators(sp)
-    sma_indicators(nasdaq)
+            if "count" not in sp.columns:
+                sp["count"] = 0
 
-    sp_download = yf.download(
-        tickers=sp_tickers,
-        period="12y",
-        group_by="ticker",
-        interval="1wk",
-        session=session,
-        threads=True,
-    )
-    sp_dic = {ticker: sp_download.xs(ticker, axis=1, level=0) for ticker in sp_tickers}
+            sp["count"] += 1
 
-    for ticker, data in sp_dic.items():
-        if data.empty:
-            print("🚩🚩🚩 " + ticker + " failed")
-            continue
+        update_task(
+            task_id,
+            epoch=f"{3+len(sp_tickers)}/{total}",
+        )
 
-        calc_up_down(data, sp)
-        stocks_above_40(data, sp)
-        new_high(data, sp)
-        new_low(data, sp)
+        for index, ticker in enumerate(nasdaq_tickers):
+            if index % 75 == 0:
+                update_task(
+                    task_id,
+                    epoch=f"{3+len(sp_tickers) + index}/{total}",
+                )
+                print(f"{index}/{len(nasdaq_tickers)}")
 
-        if "count" not in sp.columns:
-            sp["count"] = 0
+            data = yf.Ticker(ticker=ticker).history(period="12y", interval="1wk")
 
-        sp["count"] += 1
+            if data.empty:
+                print("🚩🚩🚩 " + ticker + " failed")
+                continue
 
-    for index, ticker in enumerate(nasdaq_tickers):
-        if index % 250 == 0:
-            print(f"{index}/{len(nasdaq_tickers)}")
+            data.index = data.index.tz_localize(None)
 
-        data = yf.Ticker(ticker=ticker).history(period="12y", interval="1wk")
+            calc_up_down(data, nasdaq)
+            stocks_above_40(data, nasdaq)
+            new_high(data, nasdaq)
+            new_low(data, nasdaq)
 
-        if data.empty:
-            print("🚩🚩🚩 " + ticker + " failed")
-            continue
+            if "count" not in nasdaq.columns:
+                nasdaq["count"] = 0
 
-        data.index = data.index.tz_localize(None)
+            nasdaq["count"] += 1
 
-        calc_up_down(data, nasdaq)
-        stocks_above_40(data, nasdaq)
-        new_high(data, nasdaq)
-        new_low(data, nasdaq)
+            time.sleep(0.1)
 
-        if "count" not in nasdaq.columns:
-            nasdaq["count"] = 0
+        sp_final = clean_data(sp, "S&P 500")
+        save_to_db(sp_final, MarketData.__tablename__)
 
-        nasdaq["count"] += 1
+        nasdaq_final = clean_data(nasdaq, "NASDAQ")
+        save_to_db(nasdaq_final, MarketData.__tablename__)
 
-        time.sleep(0.1)
+        update_task(task_id, "completed", f"{total/total}", "")
 
-    sp_final = clean_data(sp, "S&P 500")
-    save_to_db(sp_final, MarketData.__tablename__)
-
-    nasdaq_final = clean_data(nasdaq, "NASDAQ")
-    save_to_db(nasdaq_final, MarketData.__tablename__)
-
-    print("downloaded and completed successfully")
+        print("downloaded and completed successfully")
+    except Exception as e:
+        update_task(task_id, status="failed", error_message=str(e))
 
 
 if __name__ == "__main__":

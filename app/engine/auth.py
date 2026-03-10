@@ -32,6 +32,7 @@ oauth2_scheme = OAuth2PasswordBearer(
         # Authentication and User managment
         "auth:create_user": "Create a new user account in the system.",
         "auth:login": "Authenticate and recive access credentials.",
+        "auth:change_password": "Reset password for any user",
         "user:read": "View user information and user table entries.",
         "user:update": "modify user details such as role or status",
         "user:delete": "remove a user account from the system",
@@ -42,11 +43,13 @@ oauth2_scheme = OAuth2PasswordBearer(
         "stock:delete_ticker_set": "Delte all stock rows for a specific stock.",
         "stock:download": "Download historical data for a stock.",
         "market:download": "Download historical data for a S&P500 and NASDAQ.",
+        "market:price:live": "Get live market index prices.",
         # Table Viewing
         "table:view:market": "View the entire market table.",
         "table:view:stocks": "View the entire stock table.",
         "table:view:xgboost": "View the entire XGBoost model table.",
         "table:view:users": "View the entire users table.",
+        "table:view:tasks": "View the entire tasks table.",
         # Model & Prediction
         "model:predict": "Generate a prediction using a model.",
         "model:train": "Train or retrain a model.",
@@ -54,6 +57,7 @@ oauth2_scheme = OAuth2PasswordBearer(
         "model:publish": "Promote a tained to active/production use."
         # System-Level
         "system:admin",
+        "system:overview": "Get live system updates on the server.",
     },
 )
 
@@ -169,6 +173,7 @@ def init_admin():
             scopes=[
                 "auth:create_user",
                 "auth:login",
+                "auth:change_password",
                 "user:read",
                 "user:update",
                 "user:delete",
@@ -176,6 +181,7 @@ def init_admin():
                 "model:train",
                 "model:publish",
                 "market:read",
+                "market:price:live",
                 "stock:read",
                 "market:delete_ticker_set",
                 "stock:delete_ticker_set",
@@ -183,6 +189,7 @@ def init_admin():
                 "table:view:stocks",
                 "table:view:xgboost",
                 "table:view:users",
+                "table:view:tasks",
                 "model:predict",
                 "model:train",
                 "model:read_metadata",
@@ -190,6 +197,7 @@ def init_admin():
                 "stock:download",
                 "market:download",
                 "system:admin",
+                "system:overview",
             ],
         )
 
