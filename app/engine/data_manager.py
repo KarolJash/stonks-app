@@ -49,7 +49,8 @@ def save_to_db(df: pd.DataFrame, tablename):
 def get_user(username: str):
     query = select(UserData).where(UserData.username == username)
 
-    return SessionLocal().execute(query).scalar_one_or_none()
+    with SessionLocal() as session:
+        return session.execute(query).scalar_one_or_none()
 
 
 def update_user_password(username: str, hashed_password: str):
