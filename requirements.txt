@@ -6,7 +6,7 @@ fastapi
 python-dotenv
 curl_cffi
 numpy
-optuna==4.6.0
+optuna
 matplotlib
 xgboost
 scikit-learn
