@@ -262,7 +262,7 @@ def market(task_id):
         nasdaq_final = clean_data(nasdaq, "NASDAQ")
         save_to_db(nasdaq_final, MarketData.__tablename__)
 
-        update_task(task_id, "completed", f"{total/total}", "")
+        update_task(task_id, "completed", f"{total}/{total}", "")
 
         print("downloaded and completed successfully")
     except Exception as e:
