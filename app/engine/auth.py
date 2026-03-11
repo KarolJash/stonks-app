@@ -71,6 +71,7 @@ def create_user(user: UserCreate):
         email=user.email,
         full_name=user.full_name,
         disabled=False,
+        scopes=user.scopes,
     )
 
     upload_new_user(db_user)

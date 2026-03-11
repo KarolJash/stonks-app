@@ -109,6 +109,7 @@ class UserCreate(BaseModel):
     email: str
     full_name: str
     password: str
+    scopes: List[str]
 
 
 class XgboostFilterRequest(BaseModel):
