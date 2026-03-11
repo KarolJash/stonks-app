@@ -294,7 +294,7 @@ def train_xgboost(payload: XgboostPredictionRequest, task_id: str):
         Y_test = test[payload.output]
 
         storage = RDBStorage(
-            url=os.getenv("DATABASE_URL"),
+            url=os.getenv("OPTUNA_DATABASE_URL"),
             skip_compatibility_check=True,  # <-- This is the magic bullet
         )
 
