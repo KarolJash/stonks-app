@@ -118,7 +118,7 @@ async def login_for_access_token(
 def register_user(
     user: UserCreate,
     current_user: Annotated[
-        User, Security(get_current_active_user, scopes=["auth:cretae_user"])
+        User, Security(get_current_active_user, scopes=["auth:create_user"])
     ],
 ):
     db_user = get_user(username=user.username)

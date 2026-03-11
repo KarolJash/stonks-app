@@ -109,7 +109,6 @@ class UserCreate(BaseModel):
     email: str
     full_name: str
     password: str
-    master_password: str
 
 
 class XgboostFilterRequest(BaseModel):
