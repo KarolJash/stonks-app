@@ -170,6 +170,7 @@ def define_model(trial, n_estimators, hyperparameter_space):
         n_jobs=-1,
         enable_categorical=True,
         **params,
+        early_stopping_rounds=100,
         # quantile_alpha=[0.05, 0.5, 0.95],
         # objective='reg:quantileerror',
         # --- Optuna Params ---
