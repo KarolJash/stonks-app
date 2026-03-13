@@ -235,6 +235,7 @@ def get_xgboost_importance(ticker):
             XGBoostData.index,
             XGBoostData.ticker,
             XGBoostData.best_params,
+            XGBoostData.inputs,
         )
         .where(XGBoostData.ticker == ticker)
         .where(XGBoostData.hyperparameters_importance.is_not(None))
