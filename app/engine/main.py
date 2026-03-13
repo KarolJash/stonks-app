@@ -170,7 +170,6 @@ def define_model(trial, n_estimators, hyperparameter_space):
         n_jobs=-1,
         enable_categorical=True,
         **params,
-        early_stopping_rounds=100,
         # quantile_alpha=[0.05, 0.5, 0.95],
         # objective='reg:quantileerror',
         # --- Optuna Params ---
@@ -189,7 +188,6 @@ def train_model_gpu(params, d_train, d_test, trial):
         d_train,
         num_boost_round=1000,
         evals=[(d_test, "Test")],
-        early_stopping_rounds=100,
         verbose_eval=False,
     )
 
