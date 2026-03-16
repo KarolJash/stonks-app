@@ -25,6 +25,32 @@ from app.engine.data_manager import update_task
 load_dotenv()
 
 
+class RestartOnStagnation:
+    def __init__(self, patience=250):
+        self.patience = patience
+        self.best_value = None
+        self.no_improve = 0
+
+    def __call__(self, study, trial):
+        # First trial
+        if self.best_value is None:
+            self.best_value = study.best_value
+            return
+
+        # Improvement?
+        if study.best_value > self.best_value:
+            self.best_value = study.best_value
+            self.no_improve = 0
+        else:
+            self.no_improve += 1
+
+        # Trigger restart
+        if self.no_improve >= self.patience:
+            print(f"⚠️  No improvement in {self.patience} trials — restarting sampler.")
+            study.sampler = optuna.samplers.RandomSampler()
+            self.no_improve = 0
+
+
 def import_data(ticker, start_training, end_training, start_testing, end_testing):
     stock_train = (
         import_from_db(ticker, StockData, start_training, end_training)
@@ -311,6 +337,8 @@ def train_xgboost(payload: XgboostPredictionRequest, task_id: str):
             if (trial.number + 1) % 5 == 0:
                 update_task(task_id, epoch=f"{trial.number + 1}/{payload.trials}")
 
+        restart_callback = RestartOnStagnation(patience=250)
+
         # --- CPU ---
         study.optimize(
             lambda trial: main_cpu(
@@ -324,7 +352,7 @@ def train_xgboost(payload: XgboostPredictionRequest, task_id: str):
                 payload.hyperparameter_space,
             ),
             n_trials=payload.trials,
-            callbacks=[task_callback],
+            callbacks=[task_callback, restart_callback],
         )
 
         trial_params = study.best_trial.params
