@@ -15,6 +15,7 @@ from sqlalchemy import select
 import os
 from dotenv import load_dotenv
 from math import nan
+from optuna.trial import TrialState
 
 from app.models import StockData, MarketData
 from app.db import SessionLocal
@@ -25,30 +26,58 @@ from app.engine.data_manager import update_task
 load_dotenv()
 
 
-class RestartOnStagnation:
-    def __init__(self, patience=250):
-        self.patience = patience
-        self.best_value = None
-        self.no_improve = 0
+class AdaptiveExploreExploit:
+    def __init__(self, threshold_ratio=0.10, exploit_trials=250):
+        self.threshold_ratio = threshold_ratio
+        self.exploit_trials = exploit_trials
+
+        self.global_best = None
+        self.mode = "explore"  # "explore" or "exploit"
+        self.parent_score = None
+        self.exploit_count = 0
 
     def __call__(self, study, trial):
-        # First trial
-        if self.best_value is None:
-            self.best_value = study.best_value
+        if trial.state != TrialState.COMPLETE:
             return
 
-        # Improvement?
-        if study.best_value > self.best_value:
-            self.best_value = study.best_value
-            self.no_improve = 0
-        else:
-            self.no_improve += 1
+        score = trial.value
 
-        # Trigger restart
-        if self.no_improve >= self.patience:
-            print(f"⚠️  No improvement in {self.patience} trials — restarting sampler.")
-            study.sampler = optuna.samplers.RandomSampler()
-            self.no_improve = 0
+        if self.global_best is None:
+            self.global_best = score
+            return
+
+        if score > self.global_best:
+            print(f"🏆 New global best found: {score}")
+            self.global_best = score
+
+        if self.mode == "explore":
+            tolerance = abs(self.global_best) * self.threshold_ratio
+            threshold = self.global_best - tolerance
+
+            if score >= threshold:
+                print(
+                    f"🔍 Switching to EXPLOIT mode. Score {score} is within 10% of best ({self.global_best})"
+                )
+                self.mode = "exploit"
+                self.parent_score = score
+                self.exploit_count = 0
+
+                # Switch to TPE for exploitation
+                study.sampler = optuna.samplers.TPESampler()
+            return
+
+        if self.mode == "exploit":
+            self.exploit_count += 1
+
+            # After 250 exploitation trials → return to exploration
+            if self.exploit_count >= self.exploit_trials:
+                print("🔄 Returning to EXPLORATION mode")
+                self.mode = "explore"
+                self.parent_score = None
+                self.exploit_count = 0
+
+                # Switch back to random exploration
+                study.sampler = optuna.samplers.RandomSampler()
 
 
 def import_data(ticker, start_training, end_training, start_testing, end_testing):
@@ -303,6 +332,7 @@ def sanitize_for_db(data):
 
 
 def train_xgboost(payload: XgboostPredictionRequest, task_id: str):
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
     try:
         [train, test] = import_data(
             payload.ticker,
@@ -331,13 +361,16 @@ def train_xgboost(payload: XgboostPredictionRequest, task_id: str):
                 n_startup_trials=5, n_warmup_steps=30, interval_steps=10
             ),
             load_if_exists=True,
+            sampler=optuna.samplers.RandomSampler(),
         )
 
         def task_callback(study, trial):
             if (trial.number + 1) % 5 == 0:
                 update_task(task_id, epoch=f"{trial.number + 1}/{payload.trials}")
 
-        restart_callback = RestartOnStagnation(patience=250)
+        explore_exploit_callback = AdaptiveExploreExploit(
+            threshold_ratio=0.10, exploit_trials=250
+        )
 
         # --- CPU ---
         study.optimize(
@@ -352,7 +385,7 @@ def train_xgboost(payload: XgboostPredictionRequest, task_id: str):
                 payload.hyperparameter_space,
             ),
             n_trials=payload.trials,
-            callbacks=[task_callback, restart_callback],
+            callbacks=[task_callback, explore_exploit_callback],
         )
 
         trial_params = study.best_trial.params
